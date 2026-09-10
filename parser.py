@@ -49,68 +49,68 @@ def safe_save_json(data, filepath):
     os.replace(temp_name, filepath)
 
 # # --- Your Sample Data ---
-raw_text = """
-CTPD-01760	
-Euan Warwick (07456426039)
-01 Aug 2026
-03:00
-05 Sept 2026
-23:45
-AE19GSU
-VW POLO
-Park & Ride Stansted
-30m away
-CYP-389830	
-Mrs. Margaret Odukoya (07908848863)
-01 Sept 2026
-03:00
-05 Sept 2026
-07:00
-NK13UYH
-RAV4
-Just Park & Ride
-30min
-488465	
-Mihaita Vasile (07778519149)
+# raw_text = """
+# CTPD-01760	
+# Euan Warwick (07456426039)
+# 01 Aug 2026
+# 03:00
+# 05 Sept 2026
+# 23:45
+# AE19GSU
+# VW POLO
+# Park & Ride Stansted
+# 30m away
+# CYP-389830	
+# Mrs. Margaret Odukoya (07908848863)
+# 01 Sept 2026
+# 03:00
+# 05 Sept 2026
+# 07:00
+# NK13UYH
+# RAV4
+# Just Park & Ride
+# 30min
+# 488465	
+# Mihaita Vasile (07778519149)
 	
-01 Sept 2026
-02:00
+# 01 Sept 2026
+# 02:00
 	
-06 Sept 2026
-15:00
+# 06 Sept 2026
+# 15:00
 	
-GL66JZR
-Mazda 6 Blue
-	Just Park & Ride
-30 mints 1p
-Just Park & Ride	CTP-392764	Miss. Ellie-may Flood (07725637754)	2026-09-01	03:00:00	2026-09-11	17:00:00	Peugeot	RF74WYH	Just Park & Ride	3
-CAP-18-675177	
-Mr Serhii Gnypa (07394719616)
+# GL66JZR
+# Mazda 6 Blue
+# 	Just Park & Ride
+# 30 mints 1p
+# Just Park & Ride	CTP-392764	Miss. Ellie-may Flood (07725637754)	2026-09-01	03:00:00	2026-09-11	17:00:00	Peugeot	RF74WYH	Just Park & Ride	3
+# CAP-18-675177	
+# Mr Serhii Gnypa (07394719616)
 	
-01 Sept 2026
-04:15
+# 01 Sept 2026
+# 04:15
 	
-06 Sept 2026
-01:00
+# 06 Sept 2026
+# 01:00
 	
-RA66RYK
-INFINITY
-	Stansted Cheap Park & Ride
-30 mins 
-1p
-AOA-1-23336	
-Mr Esmir Fejzullari (07718609335)
-01 Sept 2026
-04:45
-04 Sept 2026
-23:00
-Ly74aha
-Volkswagen
-Premium Park & Ride Stansted 2
-30 min
-"""
+# RA66RYK
+# INFINITY
+# 	Stansted Cheap Park & Ride
+# 30 mins 
+# 1p
+# AOA-1-23336	
+# Mr Esmir Fejzullari (07718609335)
+# 01 Sept 2026
+# 04:45
+# 04 Sept 2026
+# 23:00
+# Ly74aha
+# Volkswagen
+# Premium Park & Ride Stansted 2
+# 30 min
+# """
 
-# # Run the parser and print as formatted JSON
-extracted_data = parse_bookings(raw_text)
-# print(json.dumps(extracted_data, indent=4))
-safe_save_json(extracted_data,"bookings_data.json")
+# # # Run the parser and print as formatted JSON
+# extracted_data = parse_bookings(raw_text)
+# # print(json.dumps(extracted_data, indent=4))
+# safe_save_json(extracted_data,"bookings_data.json")

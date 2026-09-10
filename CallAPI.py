@@ -113,6 +113,6 @@ def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.js
 
 # Example Usage:
 
-bookings = get_bulk_bookings("bristol", "2026-08-01", "2026-08-31")
-print(f"Successfully retrieved {len(bookings)} bookings.")
-print(bookings[0])
+# bookings = get_bulk_bookings("bristol", "2026-08-01", "2026-08-31")
+# print(f"Successfully retrieved {len(bookings)} bookings.")
+# print(bookings[0])
