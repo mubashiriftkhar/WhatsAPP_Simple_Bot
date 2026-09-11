@@ -15,8 +15,8 @@ load_dotenv()
 
 app = FastAPI()
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_ACCOUNT_SID = os.getenv("account_sid")
+TWILIO_AUTH_TOKEN = os.getenv("auth_token")
 TWILIO_WHATSAPP_NUMBER = "whatsapp:+447853312183" 
 
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
