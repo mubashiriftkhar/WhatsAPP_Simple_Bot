@@ -80,245 +80,123 @@ def safe_save_json(data, filepath):
     os.replace(temp_name, filepath)
 
 # # --- Your Sample Data ---
-# raw_text = """
-# P-393009	
-# Miss. Lydia Vaccaro (07598499438)
-# 10 Sept 2026
-# 04:00
-# 14 Sept 2026
-# 02:30
-# P555LYD
-# BMW
-# Just Park & Ride	
-# 07852789697
-# 2 PER
-# 27 Mints away
+raw_text = """
+[11:01 PM, 9/11/2026] +92 318 4258691: CPD-19-631404	
+Mr Simon Turner (07877966957)
+08 Sept 2026
+02:30
+18 Sept 2026
+01:30
+AP72BXD
+Nissan
+Stansted Cheap Park & Ride
+30 MINT 2P
+[11:01 PM, 9/11/2026] +92 318 4258691: 489424	
+Thadi Crook (07563 995 222)
+08 Sept 2026
+03:00
+11 Sept 2026
+23:00
+YA64UXZ
+Honda civic Red
+Just Park & Ride
+45m away
+[11:01 PM, 9/11/2026] +92 318 4258691: CAP-18-674353	
+Mr Vladimir Loginov (07812033397)
+31 Aug 2026
+05:00
+07 Sept 2026
+15:00
+Sw14LLF
+Skoda
+Stansted Cheap Park & Rid
+07825772067
+1p  55 min
 
-# ACP-17-399771	
-# Mr Martin Rutkowski (07949391143)
-# 10 Sept 2026
-# 06:30
-# 12 Sept 2026
-# 21:30
-# RJ15AKK
-# Peugeot
-# Stansted Cheap Park & Ride	
-# ko08kmx
-# 4
-# 30 mins
 
-# EZY-416747	
-# Muhammad Ismail Hanif (07307874849)
-# 10 Sept 2026
-# 14:00
-# 13 Sept 2026
-# 15:30
-# AF57JXW
-# Volkswagen Polo Black
-# Stanstetd Park &amp; Ride
-# 3 per
-# 50 Mints away...
-
-# P4U-1-678492	
-# Mr Defrim Avdullai (07879886528)
-# 10 Sept 2026
-# 15:45
-# 20 Sept 2026
-# 23:30
-# KV61UDD
-# Audi
-# Stansted Park and Fly
-# 25 mints 1p
-
-# AOA-1-20477	
-# Mr David Calveley (07400815482)
-# 11 Sept 2026
-# 04:00
-# 18 Sept 2026
-# 03:45
-# WM67 KK0
-# Mitsubishi
-# Premium Park & Ride Stansted
-# 07426035368
-# 2 PER
-# 25 MIN AWAY
-
-# Stansted Cheap Park & Ride	P4U-1-671749	Mr Paul Mckay (07715632079)	2026-09-11	03:00:00	2026-09-14	01:30:00	Vauxhall	SH64 VDR	Stansted Cheap Park & Ride	2
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: CPP-126711	
-# Jamie Tonkin (07831861643)
-# 31 Aug 2026
-# 05:00
-# 11 Sept 2026
-# 14:00
-# GL12HJX
-# Peugeot 107 White
-# Stanstetd Park &amp; Ride
-# 07841512475
-
-# 2 cars                 40 min       3p
-
-# Jg14zdk. Car reg
-# 11/09. Return
-# 13:00. Time
-# 2 per
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: EZY-415876	
-# nikki deaney (07551345581)
-# 28 Aug 2026
-# 04:00
-# 11 Sept 2026
-# 14:00
-# Sg59lcn
-# Ford Focus Blue
-# Stanstetd Park &amp; Ride
-# 3 PER
-# 50 Mints...
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: CPD-19-623264	
-# Mr Costica Andrei Dan (07526567497)
-# 29 Aug 2026
-# 04:30
-# 11 Sept 2026
-# 14:00
-# KE65MVN
-# Lexus
-# Stansted Cheap Park & Ride
-# 30 mins away 
-# 2 per
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: CYP-389858	
-# Mr. Mhd Imad Kalach (07504555543)
-# 25 Aug 2026
-# 11:30
-# 11 Sept 2026
-# 17:00
-# BT16TXH
-# Mercedes
-# Just Park & Ride	
-# 30 min
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: AOA-1-23668	
-# Mr Hemanth Raj Pachiriyan (07824049991)
-# 06 Sept 2026
-# 22:30
-# 11 Sept 2026
-# 02:00
-# AJ67BZH
-# Volkswagen
-# Premium Park & Ride Stansted
-# please check screenshot of confirmation
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: 106	Just Park & Ride	CYP-389823	Mr. Jameill Hewitt (07552948027)	2026-09-05	03:30:00	2026-09-11	17:00:00	Kia	LC20MKZ	Just Park & Ride	2 *
-# 30 mins*
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: CPD-19-618542	
-# Mrs Iacob Irina (07751018982)
-# 29 Aug 2026
-# 04:00
-# 11 Sept 2026
-# 18:00
-# WR68ZYY
-# Mitsubishi
-# Stansted Cheap Park & Ride
-# 07869768305
-# 30 MINS
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: CP-STA-1371	
-# SAFDAR ZAMAN (07957709457)
-# SAF.ZAM@HOTMAIL.COM
-# 08 Sept 2026
-# 05:00
-# 11 Sept 2026
-# 14:00
-# SL69VFU
-# LEXUS LEXUS
-# Park and Ride Stansted
-# 07459438774
-# 30 MINS
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: 07803909109
-# 	CP-STA-1340	
-# Avtar Sandhu (7803909109)
-# sandhu@blueyonder.co.uk
-# 30 Aug 2026
-# 14:00
-# 11 Sept 2026
-# 18:00
-# MR54NDH
-# BMW X4 Xdrive20d M Sport Mhev Auto
-# Park and Ride Stansted
-# 30 MINS
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: CYP-396415	
-# Ms. Jean Kennett (07930697315)
-# 07 Sept 2026
-# 06:00
-# 11 Sept 2026
-# 18:00
-# LV15EJA
-# Ford
-# Just Park & Ride
-# 30m
-
-# [9:45 PM, 9/11/2026] +92 318 4258691: Just Park & Ride	CYP-389836	Mr. Joe Wallington (07736220392)	2026-09-02	12:00:00	2026-09-10	00:15:00	Audi	LR61LZA	Just Park & Ride	2
-# collect late fee
-# coming to yard
-
-# [9:38 PM, 9/11/2026] +92 318 4258691: AOA-1-23668	
-# Mr Hemanth Raj Pachiriyan (07824049991)
-# 06 Sept 2026
-# 22:30
-# 11 Sept 2026
-# 02:00
-# AJ67BZH
-# Volkswagen
-# Premium Park & Ride Stansted
-# please check screenshot of confirmation
-
-# [9:38 PM, 9/11/2026] +92 318 4258691: CPD-19-618542	
-# Mrs Iacob Irina (07751018982)
-# 29 Aug 2026
-# 04:00
-# 11 Sept 2026
-# 18:00
-# WR68ZYY
-# Mitsubishi
-# Stansted Cheap Park & Ride
-# 07869768305
-# 30 MINS
-
-# [9:38 PM, 9/11/2026] +92 318 4258691: CP-STA-1371	
-# SAFDAR ZAMAN (07957709457)
-# SAF.ZAM@HOTMAIL.COM
-# 08 Sept 2026
-# 05:00
-# 11 Sept 2026
-# 14:00
-# SL69VFU
-# LEXUS LEXUS
-# Park and Ride Stansted
-# 07459438774
-# 30 MINS
-
-# [9:38 PM, 9/11/2026] +92 318 4258691: Just Park & Ride	CTP-392764	Miss. Ellie-may Flood (07725637754)	2026-09-01	03:00:00	2026-09-11	17:00:00	Peugeot	RF74WYH	Just Park & Ride	3
-# 30 MINS
-
-# [9:38 PM, 9/11/2026] +92 318 4258691: 07803909109
-# 	CP-STA-1340	
-# Avtar Sandhu (7803909109)
-# sandhu@blueyonder.co.uk
-# 30 Aug 2026
-# 14:00
-# 11 Sept 2026
-# 18:00
-# MR54NDH
-# BMW X4 Xdrive20d M Sport Mhev Auto
-# Park and Ride Stansted
-# 30 MINS
-# """
+still on the plane
+[11:01 PM, 9/11/2026] +92 318 4258691: Just Park & Ride	CYP-394571	Miss. Gemma Rear (07446949531)	2026-09-04	03:00:00	2026-09-11	15:30:00	Ford	WV18FXL	Just Park & Ride	1
+30 mins
+[11:01 PM, 9/11/2026] +92 318 4258691: Just Park & Ride	CYP-389836	Mr. Joe Wallington (07736220392)	2026-09-02	12:00:00	2026-09-10	00:15:00	Audi	LR61LZA	Just Park & Ride	2
+collect late fee
+coming to yard
+[11:01 PM, 9/11/2026] +92 318 4258691: AOA-1-23668	
+Mr Hemanth Raj Pachiriyan (07824049991)
+06 Sept 2026
+22:30
+11 Sept 2026
+02:00
+AJ67BZH
+Volkswagen
+Premium Park & Ride Stansted
+please check screenshot of confirmation
+AOA-1-20477	
+Mr David Calveley (07400815482)
+11 Sept 2026
+04:00
+18 Sept 2026
+03:45
+WM67 KK0
+Mitsubishi
+Premium Park & Ride Stansted
+07426035368
+2 PER
+25 MIN AWAY
+Stansted Cheap Park & Ride	P4U-1-671749	Mr Paul Mckay (07715632079)	2026-09-11	03:00:00	2026-09-14	01:30:00	Vauxhall	SH64 VDR	Stansted Cheap Park & Ride	2
+CTP-393782	
+Mrs. Katarzyna Holke (07860254295)
+11 Sept 2026
+03:00
+13 Sept 2026
+12:00
+HX64XYS
+Renault
+Just Park & Ride	
+25 mins away 
+2p
+YP-398424	
+Mr. Ryan Westhorpe (447398139078)
+11 Sept 2026
+13:00
+14 Sept 2026
+01:00
+WF67SJY
+Mercedes
+Just Park & Ride
+5 PER
+30 Mints away....
+07398139078
+P4U-1-678911	
+Mr Luke Perry (07478314304)
+	
+11 Sept 2026
+13:30
+	
+12 Sept 2026
+09:00
+	
+RJ75 LTE
+Citroen
+	Stansted Park and Fly	
+07522824288
+30 MINS AWAY 
+2P
+Premium Park & Ride Stansted	AOA-1-23893	Mr Nilesh Parekh (07773025455)	2026-09-11	15:00:00	2026-09-16	21:00:00	VW	PN11ESH	Premium Park & Ride Stansted	6
+CP-STA-1371	
+SAFDAR ZAMAN (07957709457)
+SAF.ZAM@HOTMAIL.COM
+08 Sept 2026
+05:00
+11 Sept 2026
+14:00
+SL69VFU
+LEXUS LEXUS
+Park and Ride Stansted
+07459438774
+30 MINS
+"""
 
 # # # # Run the parser and print as formatted JSON
-# extracted_data = parse_bookings(raw_text)
-# print(json.dumps(extracted_data, indent=4))
-# safe_save_json(extracted_data,"bookings_data.json")
+extracted_data = parse_bookings(raw_text)
+print(json.dumps(extracted_data, indent=4))
+safe_save_json(extracted_data,"bookings_data.json")

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.json", excel_output_path="bookings_output.xlsx"):
+def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings_data.json", excel_output_path="bookings_output.xlsx"):
     url = os.getenv("base_url")
     headers = {
         "X-API-KEY": os.getenv("my_api_key"),
@@ -23,7 +23,7 @@ def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.js
     # ---------------------------------------------------------
     while current_page <= total_pages:
         payload = {
-            "airport": airport,
+            "airport": airport.strip().lower(), # Ensure airport name is lowercase to match API expectations
             "start_date": start_date,
             "end_date": end_date,
             "page": current_page,
@@ -31,6 +31,10 @@ def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.js
         }
         
         response = requests.post(url, headers=headers, json=payload)
+        
+        # Log server error details for 400 Bad Request debugging
+        if response.status_code >= 400:
+            print(f"API Error Response ({response.status_code}): {response.text}")
         
         if response.status_code == 429:
             retry_after = int(response.headers.get("Retry-After", 5))
@@ -77,7 +81,7 @@ def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.js
             try:
                 local_data = json.load(file)
                 # Extracts all "id" values from the JSON list of dictionaries
-                json_ids = {item.get("id") for item in local_data if item.get("id")}
+                json_ids = {str(item.get("id")).strip() for item in local_data if item.get("id")}
             except json.JSONDecodeError:
                 print(f"Warning: {json_file_path} is empty or corrupted.")
     else:
@@ -85,8 +89,10 @@ def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.js
 
     # Iterate through every booking from the API and append the "status" key
     for booking in all_bookings:
-        booking_ref = booking.get("BookingRef")
-        if booking_ref in json_ids:
+        # Match using the exact "BookingRef" key from the API response payload
+        booking_ref = str(booking.get("BookingRef", "")).strip()
+        
+        if booking_ref and booking_ref in json_ids:
             booking["status"] = "show"
         else:
             booking["status"] = "not show"
@@ -113,6 +119,6 @@ def get_bulk_bookings(airport, start_date, end_date, json_file_path="bookings.js
 
 # Example Usage:
 
-# bookings = get_bulk_bookings("bristol", "2026-08-01", "2026-08-31")
-# print(f"Successfully retrieved {len(bookings)} bookings.")
-# print(bookings[0])
+bookings = get_bulk_bookings("Stansted", "2026-09-01", "2026-09-30")
+print(f"Successfully retrieved {len(bookings)} bookings.")
+print(bookings[0])
