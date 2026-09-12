@@ -80,123 +80,91 @@ def safe_save_json(data, filepath):
     os.replace(temp_name, filepath)
 
 # # --- Your Sample Data ---
-raw_text = """
-[11:01 PM, 9/11/2026] +92 318 4258691: CPD-19-631404	
-Mr Simon Turner (07877966957)
-08 Sept 2026
-02:30
-18 Sept 2026
-01:30
-AP72BXD
-Nissan
-Stansted Cheap Park & Ride
-30 MINT 2P
-[11:01 PM, 9/11/2026] +92 318 4258691: 489424	
-Thadi Crook (07563 995 222)
-08 Sept 2026
-03:00
-11 Sept 2026
-23:00
-YA64UXZ
-Honda civic Red
-Just Park & Ride
-45m away
-[11:01 PM, 9/11/2026] +92 318 4258691: CAP-18-674353	
-Mr Vladimir Loginov (07812033397)
-31 Aug 2026
-05:00
-07 Sept 2026
-15:00
-Sw14LLF
-Skoda
-Stansted Cheap Park & Rid
-07825772067
-1p  55 min
+# raw_text = """
+# [7:19 PM, 9/12/2026] +92 318 4258691: 05:00
+# 11 Sept 2026
+# 19:30
+# HX64XBZ
+# Renault
+# Just Park & Ride
+# 30 mins
+# [7:19 PM, 9/12/2026] +92 318 4258691: CAP-18-651232	
+# Mr Martin Town (07798897314)
+# 06 Sept 2026
+# 06:00
+# 11 Sept 2026
+# 21:00
+# MD70ONE
+# Mazda
+# Stansted Cheap Park & Ride
+# 30m
+# [7:19 PM, 9/12/2026] +92 318 4258691: AOA-1-22600	
+# Mr Godswill Udo (07956141433)
+# 07 Sept 2026
+# 12:00
+# 12 Sept 2026
+# 12:00
+# HG15WFS
+# Ford
+# Premium Park & Ride Stansted
+# 30 MINS
+# 2 per
+# [7:19 PM, 9/12/2026] +92 318 4258691: 487585	
+# Lavinia Cercel (07932809154)
+# 05 Sept 2026
+# 15:00
+# 11 Sept 2026
+# 23:30
+# Bg18bym
+# Kia Sportage Red
+# Just Park & Ride
+# [7:19 PM, 9/12/2026] +92 318 4258691: CP-STA-1307	
+# stephanie bloomfield (07500691975)
+# sbloomfield1968@gmail.com
+# 07 Sept 2026
+# 08:00
+# 11 Sept 2026
+# 18:30
+# SL09 PCZ
+# Ford Fiesta
+# Park and Ride Stansted
+# 30m
+# [7:19 PM, 9/12/2026] +92 318 4258691: CYP-373873	
+# Mrs. Jacq Hill (07592708947)
+# 07 Sept 2026
+# 03:30
+# 11 Sept 2026
+# 15:00
+# XIG6841
+# Mercedes
+# Just Park & Ride
+# 30m
+# [7:19 PM, 9/12/2026] +92 318 4258691: CPD-19-649454	
+# Miss KHAULA DAR (07882779795)
+# 07 Sept 2026
+# 12:00
+# 11 Sept 2026
+# 19:00
+# DG08 SXE
+# TOYOTA
+# Stansted Cheap Park & Ride
+# 2p
+# 30mins
+# [7:19 PM, 9/12/2026] +92 318 4258691: Just Park & Ride	CYP
+# 30 mins-375759	Mr. Ben Elliott (07725580591)	2026-09-04	05:00:00	2026-09-11	16:30:00	Ford	EK12UTP	Just Park & Ride	3
+# [7:19 PM, 9/12/2026] +92 318 4258691: CTP-393939	
+# Mr. Tom Moat (07554487706)
+# 07 Sept 2026
+# 05:00
+# 11 Sept 2026
+# 19:30
+# HX64XBZ
+# Renault
+# Just Park & Ride
+# 30 mins
+# """
 
-
-still on the plane
-[11:01 PM, 9/11/2026] +92 318 4258691: Just Park & Ride	CYP-394571	Miss. Gemma Rear (07446949531)	2026-09-04	03:00:00	2026-09-11	15:30:00	Ford	WV18FXL	Just Park & Ride	1
-30 mins
-[11:01 PM, 9/11/2026] +92 318 4258691: Just Park & Ride	CYP-389836	Mr. Joe Wallington (07736220392)	2026-09-02	12:00:00	2026-09-10	00:15:00	Audi	LR61LZA	Just Park & Ride	2
-collect late fee
-coming to yard
-[11:01 PM, 9/11/2026] +92 318 4258691: AOA-1-23668	
-Mr Hemanth Raj Pachiriyan (07824049991)
-06 Sept 2026
-22:30
-11 Sept 2026
-02:00
-AJ67BZH
-Volkswagen
-Premium Park & Ride Stansted
-please check screenshot of confirmation
-AOA-1-20477	
-Mr David Calveley (07400815482)
-11 Sept 2026
-04:00
-18 Sept 2026
-03:45
-WM67 KK0
-Mitsubishi
-Premium Park & Ride Stansted
-07426035368
-2 PER
-25 MIN AWAY
-Stansted Cheap Park & Ride	P4U-1-671749	Mr Paul Mckay (07715632079)	2026-09-11	03:00:00	2026-09-14	01:30:00	Vauxhall	SH64 VDR	Stansted Cheap Park & Ride	2
-CTP-393782	
-Mrs. Katarzyna Holke (07860254295)
-11 Sept 2026
-03:00
-13 Sept 2026
-12:00
-HX64XYS
-Renault
-Just Park & Ride	
-25 mins away 
-2p
-YP-398424	
-Mr. Ryan Westhorpe (447398139078)
-11 Sept 2026
-13:00
-14 Sept 2026
-01:00
-WF67SJY
-Mercedes
-Just Park & Ride
-5 PER
-30 Mints away....
-07398139078
-P4U-1-678911	
-Mr Luke Perry (07478314304)
-	
-11 Sept 2026
-13:30
-	
-12 Sept 2026
-09:00
-	
-RJ75 LTE
-Citroen
-	Stansted Park and Fly	
-07522824288
-30 MINS AWAY 
-2P
-Premium Park & Ride Stansted	AOA-1-23893	Mr Nilesh Parekh (07773025455)	2026-09-11	15:00:00	2026-09-16	21:00:00	VW	PN11ESH	Premium Park & Ride Stansted	6
-CP-STA-1371	
-SAFDAR ZAMAN (07957709457)
-SAF.ZAM@HOTMAIL.COM
-08 Sept 2026
-05:00
-11 Sept 2026
-14:00
-SL69VFU
-LEXUS LEXUS
-Park and Ride Stansted
-07459438774
-30 MINS
-"""
-
-# # # # Run the parser and print as formatted JSON
-extracted_data = parse_bookings(raw_text)
-print(json.dumps(extracted_data, indent=4))
-safe_save_json(extracted_data,"bookings_data.json")
+# # # # # Run the parser and print as formatted JSON
+# extracted_data = parse_bookings(raw_text)
+# print(json.dumps(extracted_data, indent=4))
+# safe_save_json(extracted_data,"bookings_data.json")
