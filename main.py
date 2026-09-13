@@ -1,6 +1,7 @@
 import os
 import asyncio
 import re
+import json
 from fastapi import FastAPI, Form, Response, HTTPException, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -16,8 +17,12 @@ load_dotenv()
 
 app = FastAPI()
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID") or os.getenv("account_sid")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN") or os.getenv("auth_token")
+# --- SETUP ABSOLUTE PATHS FOR DIGITALOCEAN ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+JSON_FILE_PATH = os.path.join(BASE_DIR, "bookings_data.json")
+
+TWILIO_ACCOUNT_SID = os.getenv("account_sid")
+TWILIO_AUTH_TOKEN = os.getenv("auth_token")
 
 if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
     raise ValueError("Twilio credentials are missing! Check your .env file.")
@@ -40,16 +45,17 @@ async def delete_file_after_delay(file_path: str, delay_seconds: int = 120):
 def process_heavy_report(airport: str, start_date: str, end_date: str, excel_filename: str, user_phone: str, base_url: str, background_tasks: BackgroundTasks):
     try:
         print(f"Starting background export for {airport}...")
+        excel_path = os.path.join(BASE_DIR, excel_filename)
         
         get_bulk_bookings(
             airport=airport, 
             start_date=start_date, 
             end_date=end_date, 
-            json_file_path="bookings_data.json", 
-            excel_output_path=excel_filename
+            json_file_path=JSON_FILE_PATH, 
+            excel_output_path=excel_path
         )
         
-        background_tasks.add_task(delete_file_after_delay, excel_filename, 120)
+        background_tasks.add_task(delete_file_after_delay, excel_path, 120)
         
         media_url = f"{base_url}/download/{excel_filename}"
         
@@ -75,8 +81,13 @@ def process_heavy_report(airport: str, start_date: str, end_date: str, excel_fil
 @app.get("/download/{filename}")
 async def download_file(filename: str):
     """Serves Excel or JSON files so Twilio can download and attach them to WhatsApp."""
-    file_path = f"./{filename}"
+    file_path = os.path.join(BASE_DIR, filename)
+    
     if os.path.exists(file_path):
+        # Prevent attempting to send a 0-byte file which causes Twilio to fail
+        if os.path.getsize(file_path) == 0:
+            return Response(content="File is empty.", status_code=400)
+            
         media_type = 'application/json' if filename.endswith('.json') else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         return FileResponse(
             path=file_path, 
@@ -102,11 +113,15 @@ async def receive_whatsapp_message(
     try:
         base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
 
-        # CONDITION 1: Check if message is "0000" to send bookings_data.json
-        if message_body == os.getenv("bookingFile"):
-            json_filename = "bookings_data.json"
-            if os.path.exists(json_filename):
-                media_url = f"{base_url}/download/{json_filename}"
+        # CONDITION 1: Check explicitly for "0000" or the env variable
+        if message_body == "0000" or message_body == os.getenv("bookingFile"):
+            if os.path.exists(JSON_FILE_PATH):
+                # Ensure the file isn't empty before trying to send it
+                if os.path.getsize(JSON_FILE_PATH) == 0:
+                    twiml_response.message("The bookings database is currently empty. Please send some records first.")
+                    return Response(content=str(twiml_response), media_type="application/xml")
+                    
+                media_url = f"{base_url}/download/bookings_data.json"
                 msg = twiml_response.message("Here is your current bookings database JSON file:")
                 msg.media(media_url)
                 return Response(content=str(twiml_response), media_type="application/xml")
@@ -135,10 +150,28 @@ async def receive_whatsapp_message(
         extracted_data = parse_bookings(message_body)
         
         if extracted_data:
-            safe_save_json(extracted_data, "bookings_data.json")
-            saved_ids = [item['id'] for item in extracted_data]
-            summary_text = f"Successfully extracted and saved {len(extracted_data)} records.\nIDs: {', '.join(saved_ids)}"
+            # Safely merge new data with existing data instead of overwriting
+            existing_data = []
+            if os.path.exists(JSON_FILE_PATH) and os.path.getsize(JSON_FILE_PATH) > 0:
+                try:
+                    with open(JSON_FILE_PATH, "r") as f:
+                        existing_data = json.load(f)
+                except json.JSONDecodeError:
+                    pass # File was corrupted/empty, start fresh
             
+            # Deduplicate by ID
+            existing_ids = {item["id"] for item in existing_data}
+            new_records = [item for item in extracted_data if item["id"] not in existing_ids]
+            
+            final_data = existing_data + new_records
+            safe_save_json(final_data, JSON_FILE_PATH)
+            
+            saved_ids = [item['id'] for item in new_records]
+            if saved_ids:
+                summary_text = f"Successfully extracted and saved {len(new_records)} NEW records.\nIDs: {', '.join(saved_ids)}"
+            else:
+                summary_text = "No new records found (all IDs were already saved)."
+                
             twiml_response.message(summary_text)
             return Response(content=str(twiml_response), media_type="application/xml")
 
