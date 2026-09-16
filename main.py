@@ -176,7 +176,7 @@ async def receive_whatsapp_message(
             return Response(content=str(twiml_response), media_type="application/xml")
 
         # CONDITION 4: Message does not match any known format
-        twiml_response.message("Invalid message format.\n\n- Send raw booking text to update database\n- Send '0000' to get bookings.json\n- Send 'Airport, YYYY-MM-DD, YYYY-MM-DD' for Excel report.")
+        twiml_response.message("Invalid message format.\n\n- Send raw booking text to update database")
         return Response(content=str(twiml_response), media_type="application/xml")
 
     except Exception as e:
