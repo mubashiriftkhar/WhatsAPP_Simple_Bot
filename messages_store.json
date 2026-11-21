@@ -1,0 +1,20 @@
+{
+    "88412": {
+        "event": "message.created",
+        "message": {
+            "id": 88412,
+            "groupId": 37,
+            "groupName": "Stansted drivers",
+            "type": "text",
+            "text": "PASTE_REAL_RAW_BOOKING_TEXT_HERE",
+            "sender": {
+                "id": 25,
+                "name": "Ali Khan",
+                "role": "Employee"
+            },
+            "createdAt": "2026-11-19T10:20:11.000Z",
+            "editedAt": null,
+            "deletedAt": null
+        }
+    }
+}

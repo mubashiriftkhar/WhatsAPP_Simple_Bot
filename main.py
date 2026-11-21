@@ -1,203 +1,597 @@
+
 import os
-import asyncio
 import re
 import json
-from fastapi import FastAPI, Form, Response, HTTPException, Request, BackgroundTasks
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from twilio.rest import Client
-from twilio.twiml.messaging_response import MessagingResponse
+import logging
+import threading
+from datetime import date
+from urllib.parse import urlparse
+from typing import Any
+
+import requests
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from pydantic import BaseModel, HttpUrl
 from dotenv import load_dotenv
 
-# Your custom module imports
 from parser import parse_bookings, safe_save_json
 from CallAPI import get_bulk_bookings
 
-load_dotenv() 
+load_dotenv()
 
-app = FastAPI()
+app = FastAPI(title="Compare My Parking Bot API")
 
-# --- SETUP ABSOLUTE PATHS FOR DIGITALOCEAN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 JSON_FILE_PATH = os.path.join(BASE_DIR, "bookings_data.json")
+GROUP_STATE_PATH = os.path.join(BASE_DIR, "group_messages_state.json")
+REPORT_STATE_PATH = os.path.join(BASE_DIR, "completed_reports.json")
 
-TWILIO_ACCOUNT_SID = os.getenv("account_sid")
-TWILIO_AUTH_TOKEN = os.getenv("auth_token")
+BOOKING_FILE_COMMAND = os.getenv("bookingFile", "0000")
 
-if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-    raise ValueError("Twilio credentials are missing! Check your .env file.")
+COMPANY_API_HOST = "comparemyairportparking.com"
 
-TWILIO_WHATSAPP_NUMBER = "whatsapp:+447853312183" 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+group_lock = threading.Lock()
+report_lock = threading.Lock()
 
-class OutboundMessage(BaseModel):
-    to_number: str
-    message_body: str
+active_jobs = set()
 
-async def delete_file_after_delay(file_path: str, delay_seconds: int = 120):
-    """Waits for Twilio to download the file, then deletes it from the server."""
-    await asyncio.sleep(delay_seconds)
-    if os.path.exists(file_path) and not file_path.endswith("bookings_data.json"):
-        os.remove(file_path)
-        print(f"Cleaned up temporary file: {file_path}")
 
-def process_heavy_report(airport: str, start_date: str, end_date: str, excel_filename: str, user_phone: str, base_url: str, background_tasks: BackgroundTasks):
+# ---------------------------------------------------------
+# REQUEST MODELS
+# ---------------------------------------------------------
+
+class Airport(BaseModel):
+    id: int
+    name: str
+
+
+class ReportRequest(BaseModel):
+    jobId: str
+    airport: Airport
+    fromDate: date
+    toDate: date
+    format: str
+    requestedBy: dict[str, Any]
+    resultUrl: HttpUrl
+
+
+# ---------------------------------------------------------
+# JSON HELPERS
+# ---------------------------------------------------------
+
+def load_json_file(file_path: str, default: Any = None):
+    if default is None:
+        default = []
+
+    if not os.path.exists(file_path):
+        return default
+
     try:
-        print(f"Starting background export for {airport}...")
-        excel_path = os.path.join(BASE_DIR, excel_filename)
-        
+        with open(file_path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (json.JSONDecodeError, OSError):
+        return default
+
+
+def save_state(file_path: str, data: Any):
+    temp_path = file_path + ".tmp"
+
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
+    os.replace(temp_path, file_path)
+
+
+def get_bookings():
+    data = load_json_file(JSON_FILE_PATH, [])
+    return data if isinstance(data, list) else []
+
+
+def save_bookings(data: list):
+    safe_save_json(data, JSON_FILE_PATH)
+
+
+def normalize_event_id(value):
+    return str(value)
+
+
+def is_newer_event(new_event_id, old_event_id):
+    try:
+        return int(new_event_id) > int(old_event_id)
+    except (ValueError, TypeError):
+        return str(new_event_id) != str(old_event_id)
+
+
+def safe_filename(value: str):
+    value = re.sub(r"[^a-zA-Z0-9_-]", "_", value)
+    return value.strip("_") or "report"
+
+
+# ---------------------------------------------------------
+# 1. GROUP MESSAGE PROCESSING
+# ---------------------------------------------------------
+
+def process_group_message(payload: dict):
+    event = payload.get("event")
+    event_id = payload.get("eventId")
+    message = payload.get("message") or {}
+
+    if event not in {
+        "message.created",
+        "message.edited",
+        "message.deleted"
+    }:
+        raise HTTPException(status_code=400, detail="Invalid event type.")
+
+    if event_id is None:
+        raise HTTPException(status_code=400, detail="eventId is required.")
+
+    message_id = message.get("id")
+
+    if message_id is None:
+        raise HTTPException(status_code=400, detail="message.id is required.")
+
+    event_id = normalize_event_id(event_id)
+    message_id = str(message_id)
+
+    with group_lock:
+
+        state = load_json_file(
+            GROUP_STATE_PATH,
+            {
+                "handled_event_ids": [],
+                "messages": {}
+            }
+        )
+
+        handled_events = set(state.get("handled_event_ids", []))
+        stored_messages = state.get("messages", {})
+
+        # Ignore duplicate events.
+        if event_id in handled_events:
+            return {
+                "status": "duplicate",
+                "message": "Event already processed."
+            }
+
+        previous_message = stored_messages.get(message_id)
+
+        # Ignore an older event arriving after a newer event.
+        if previous_message:
+            previous_event_id = previous_message.get("event_id")
+
+            if not is_newer_event(event_id, previous_event_id):
+                handled_events.add(event_id)
+
+                state["handled_event_ids"] = list(handled_events)
+                save_state(GROUP_STATE_PATH, state)
+
+                return {
+                    "status": "ignored",
+                    "message": "An older message event was received."
+                }
+
+        bookings = get_bookings()
+
+        # Remove records associated with the previous version
+        # of this group message.
+        if previous_message:
+            previous_booking_ids = set(
+                previous_message.get("booking_ids", [])
+            )
+
+            bookings = [
+                booking for booking in bookings
+                if str(booking.get("id")) not in previous_booking_ids
+            ]
+            save_bookings(bookings)
+
+        booking_ids = []
+
+        # CONDITION 1: Export current bookings database.
+        if event != "message.deleted":
+
+            message_body = (message.get("text") or "").strip()
+
+            if (
+                message_body == "0000"
+                or (
+                    BOOKING_FILE_COMMAND
+                    and message_body == BOOKING_FILE_COMMAND
+                )
+            ):
+                handled_events.add(event_id)
+
+                stored_messages[message_id] = {
+                    "event_id": event_id,
+                    "event": event,
+                    "booking_ids": [],
+                    "group_id": message.get("groupId"),
+                    "group_name": message.get("groupName")
+                }
+
+                state["handled_event_ids"] = list(handled_events)
+                state["messages"] = stored_messages
+
+                save_state(GROUP_STATE_PATH, state)
+
+                return {
+                    "status": "success",
+                    "message": "Current bookings database.",
+                    "data": bookings
+                }
+
+            # CONDITION 2: Parse raw booking text.
+            extracted_data = parse_bookings(message_body)
+
+            if extracted_data:
+
+                existing_ids = {
+                    str(item["id"])
+                    for item in bookings
+                    if item.get("id") is not None
+                }
+
+                new_records = []
+
+                for item in extracted_data:
+                    record_id = str(item["id"])
+
+                    if record_id not in existing_ids:
+                        new_records.append(item)
+                        existing_ids.add(record_id)
+
+                bookings.extend(new_records)
+
+                booking_ids = [
+                    str(item["id"])
+                    for item in extracted_data
+                    if item.get("id") is not None
+                ]
+
+                save_bookings(bookings)
+
+                response = {
+                    "status": "success",
+                    "message": "Booking message processed.",
+                    "total_extracted": len(extracted_data),
+                    "new_records": len(new_records),
+                    "duplicate_records": len(extracted_data) - len(new_records),
+                    "booking_ids": [
+                        item["id"] for item in new_records
+                    ]
+                }
+
+            else:
+                # CONDITION 3: Invalid message format.
+                response = {
+                    "status": "ignored",
+                    "message": "Invalid message format. No booking records extracted."
+                }
+
+        else:
+            # CONDITION 4: Message deleted.
+            if previous_message:
+                save_bookings(bookings)
+
+            response = {
+                "status": "success",
+                "message": "Message deleted successfully."
+            }
+
+        # Save latest message state.
+        stored_messages[message_id] = {
+            "event_id": event_id,
+            "event": event,
+            "group_id": message.get("groupId"),
+            "group_name": message.get("groupName"),
+            "type": message.get("type"),
+            "text": message.get("text"),
+            "sender": message.get("sender"),
+            "created_at": message.get("createdAt"),
+            "edited_at": message.get("editedAt"),
+            "deleted_at": message.get("deletedAt"),
+            "booking_ids": booking_ids
+        }
+
+        handled_events.add(event_id)
+
+        state["handled_event_ids"] = list(handled_events)
+        state["messages"] = stored_messages
+
+        save_state(GROUP_STATE_PATH, state)
+
+        return response
+
+
+# ---------------------------------------------------------
+# 2. GROUP MESSAGE ENDPOINT
+# ---------------------------------------------------------
+
+@app.post("/group-messages")
+def receive_group_message(payload: dict):
+
+    try:
+        return process_group_message(payload)
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Group message processing failed.")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Group message processing failed."
+        )
+
+
+# ---------------------------------------------------------
+# 3. REPORT CALLBACK
+# ---------------------------------------------------------
+
+def validate_result_url(result_url: str):
+
+    parsed = urlparse(str(result_url))
+
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != COMPANY_API_HOST
+    ):
+        raise ValueError("Invalid report result URL.")
+
+    return str(result_url)
+
+
+def send_report_error(result_url: str, error: str):
+
+    try:
+        response = requests.post(
+            result_url,
+            json={"error": error},
+            timeout=30
+        )
+
+        if response.status_code == 409:
+            logger.info("Report was already delivered.")
+
+        elif response.status_code != 200:
+            logger.error(
+                "Report error callback failed: %s %s",
+                response.status_code,
+                response.text
+            )
+
+    except requests.RequestException:
+        logger.exception("Unable to send report error callback.")
+
+
+def send_report_file(result_url: str, file_path: str):
+
+    filename = os.path.basename(file_path)
+
+    mime_types = {
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pdf": "application/pdf",
+        ".csv": "text/csv"
+    }
+
+    extension = os.path.splitext(filename)[1].lower()
+    mime_type = mime_types.get(extension)
+
+    if not mime_type:
+        raise ValueError("Unsupported report file type.")
+
+    with open(file_path, "rb") as report_file:
+
+        response = requests.post(
+            result_url,
+            files={
+                "file": (filename, report_file, mime_type)
+            },
+            data={
+                "fileName": filename
+            },
+            timeout=(15, 180)
+        )
+
+    if response.status_code == 409:
+        logger.info("Report was already delivered.")
+        return
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Report upload failed: HTTP {response.status_code} - {response.text}"
+        )
+
+    logger.info("Report successfully delivered: %s", filename)
+
+
+# ---------------------------------------------------------
+# 4. REPORT JOB STATE
+# ---------------------------------------------------------
+
+def get_completed_jobs():
+    data = load_json_file(REPORT_STATE_PATH, [])
+    return set(data) if isinstance(data, list) else set()
+
+
+def mark_job_completed(job_id: str):
+
+    with report_lock:
+
+        completed_jobs = get_completed_jobs()
+        completed_jobs.add(job_id)
+
+        save_state(
+            REPORT_STATE_PATH,
+            list(completed_jobs)
+        )
+
+        active_jobs.discard(job_id)
+
+
+# ---------------------------------------------------------
+# 5. BACKGROUND REPORT PROCESSING
+# ---------------------------------------------------------
+
+def process_report(job: dict):
+
+    job_id = job["jobId"]
+
+    result_url = job["resultUrl"]
+
+    airport = job["airport"]["name"]
+
+    start_date = job["fromDate"]
+    end_date = job["toDate"]
+
+    excel_filename = (
+        f"bookings_{safe_filename(airport)}_"
+        f"{start_date}_to_{end_date}.xlsx"
+    )
+
+    excel_path = os.path.join(BASE_DIR, excel_filename)
+
+    try:
+
+        logger.info(
+            "Starting report job %s for airport %s",
+            job_id,
+            airport
+        )
+
+        # The existing API caller generates Excel reports.
+        if job["format"] != "xlsx":
+            raise ValueError(
+                "Currently, only xlsx report generation is supported "
+                "by the existing get_bulk_bookings API caller."
+            )
+
         get_bulk_bookings(
-            airport=airport, 
-            start_date=start_date, 
-            end_date=end_date, 
-            json_file_path=JSON_FILE_PATH, 
+            airport=airport.lower(),
+            start_date=start_date,
+            end_date=end_date,
+            json_file_path=JSON_FILE_PATH,
             excel_output_path=excel_path
         )
-        
-        background_tasks.add_task(delete_file_after_delay, excel_path, 120)
-        
-        media_url = f"{base_url}/download/{excel_filename}"
-        
-        client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            body=f"Here is your data report for {airport} ({start_date} to {end_date}):",
-            media_url=[media_url],
-            to=user_phone
-        )
-        print(f"Successfully sent heavy report to {user_phone}")
-        
-    except Exception as e:
-        print(f"Background process failed: {str(e)}")
-        client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            body=f"Report generation failed: {str(e)}",
-            to=user_phone
-        )
 
-# ---------------------------------------------------------
-# 1. FILE SERVING ENDPOINT
-# ---------------------------------------------------------
-@app.get("/download/{filename}")
-async def download_file(filename: str):
-    """Serves Excel or JSON files so Twilio can download and attach them to WhatsApp."""
-    file_path = os.path.join(BASE_DIR, filename)
-    
-    if os.path.exists(file_path):
-        # Prevent attempting to send a 0-byte file which causes Twilio to fail
-        if os.path.getsize(file_path) == 0:
-            return Response(content="File is empty.", status_code=400)
-            
-        media_type = 'application/json' if filename.endswith('.json') else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        return FileResponse(
-            path=file_path, 
-            filename=filename, 
-            media_type=media_type
-        )
-    return Response(content="File not found.", status_code=404)
-
-# ---------------------------------------------------------
-# 2. WHATSAPP WEBHOOK ROUTER
-# ---------------------------------------------------------
-@app.post("/webhook")
-async def receive_whatsapp_message(
-    request: Request, 
-    background_tasks: BackgroundTasks, 
-    From: str = Form(...), 
-    Body: str = Form(...)
-):
-    """Parses incoming text and triggers the appropriate workflow."""
-    twiml_response = MessagingResponse()
-    message_body = Body.strip()
-    
-    try:
-        base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
-
-        # CONDITION 1: Check explicitly for "0000" or the env variable
-        if message_body == "0000" or message_body == os.getenv("bookingFile"):
-            if os.path.exists(JSON_FILE_PATH):
-                # Ensure the file isn't empty before trying to send it
-                if os.path.getsize(JSON_FILE_PATH) == 0:
-                    twiml_response.message("The bookings database is currently empty. Please send some records first.")
-                    return Response(content=str(twiml_response), media_type="application/xml")
-                    
-                media_url = f"{base_url}/download/bookings_data.json"
-                msg = twiml_response.message("Here is your current bookings database JSON file:")
-                msg.media(media_url)
-                return Response(content=str(twiml_response), media_type="application/xml")
-            else:
-                twiml_response.message("The bookings database file does not exist yet.")
-                return Response(content=str(twiml_response), media_type="application/xml")
-
-        # CONDITION 2: Check if message is "Airport, StartDate, EndDate"
-        date_query_pattern = re.compile(r'^([A-Za-z\s]+)\s*,\s*(\d{4}-\d{2}-\d{2})\s*,\s*(\d{4}-\d{2}-\d{2})$')
-        query_match = date_query_pattern.match(message_body)
-        
-        if query_match:
-            airport, start_date, end_date = query_match.groups()
-            airport = airport.strip().lower()
-            excel_filename = f"bookings_{airport}_{start_date}.xlsx"
-            
-            background_tasks.add_task(
-                process_heavy_report, 
-                airport, start_date, end_date, excel_filename, From, base_url, background_tasks
+        if not os.path.exists(excel_path):
+            raise FileNotFoundError(
+                "Report generator did not create the Excel file."
             )
-            
-            twiml_response.message(f"Your request for {airport} data is processing. This will take a moment, and the Excel file will be sent to you shortly.")
-            return Response(content=str(twiml_response), media_type="application/xml")
 
-        # CONDITION 3: Check if message contains raw booking text
-        extracted_data = parse_bookings(message_body)
-        
-        if extracted_data:
-            # Safely merge new data with existing data instead of overwriting
-            existing_data = []
-            if os.path.exists(JSON_FILE_PATH) and os.path.getsize(JSON_FILE_PATH) > 0:
-                try:
-                    with open(JSON_FILE_PATH, "r") as f:
-                        existing_data = json.load(f)
-                except json.JSONDecodeError:
-                    pass # File was corrupted/empty, start fresh
-            
-            # Deduplicate by ID
-            existing_ids = {item["id"] for item in existing_data}
-            new_records = [item for item in extracted_data if item["id"] not in existing_ids]
-            
-            final_data = existing_data + new_records
-            safe_save_json(final_data, JSON_FILE_PATH)
-            
-            saved_ids = [item['id'] for item in new_records]
-            if saved_ids:
-                summary_text = f"Successfully extracted and saved {len(new_records)} NEW records.\nIDs: {', '.join(saved_ids)}"
-            else:
-                summary_text = "No new records found (all IDs were already saved)."
-                
-            twiml_response.message(summary_text)
-            return Response(content=str(twiml_response), media_type="application/xml")
+        if os.path.getsize(excel_path) == 0:
+            raise ValueError("Generated report is empty.")
 
-        # CONDITION 4: Message does not match any known format
-        twiml_response.message("Invalid message format.\n\n- Send raw booking text to update database")
-        return Response(content=str(twiml_response), media_type="application/xml")
+        # Upload the completed file to the company's application.
+        send_report_file(result_url, excel_path)
 
-    except Exception as e:
-        twiml_response.message(f"Process Failed: {str(e)}")
-        return Response(content=str(twiml_response), media_type="application/xml")
-
-# ---------------------------------------------------------
-# 3. PROACTIVE SEND ENDPOINT
-# ---------------------------------------------------------
-@app.post("/send")
-async def send_whatsapp_message(payload: OutboundMessage):
-    """Sends a new, proactive outbound WhatsApp message."""
-    cleaned_to = payload.to_number.replace(" ", "")
-    formatted_to = cleaned_to if cleaned_to.startswith("whatsapp:") else f"whatsapp:{cleaned_to}"
-    
-    try:
-        message = client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            body=payload.message_body,
-            to=formatted_to  
+        logger.info(
+            "Report job %s completed successfully.",
+            job_id
         )
-        return {"status": "success", "message_sid": message.sid}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception as error:
+
+        logger.exception("Report job %s failed.", job_id)
+
+        send_report_error(
+            result_url,
+            str(error)
+        )
+
+    finally:
+
+        if os.path.exists(excel_path):
+            try:
+                os.remove(excel_path)
+            except OSError:
+                logger.exception("Temporary report cleanup failed.")
+
+        mark_job_completed(job_id)
+
+
+# ---------------------------------------------------------
+# 6. REPORT REQUEST ENDPOINT
+# ---------------------------------------------------------
+
+@app.post("/reports", status_code=202)
+def receive_report_request(
+    payload: ReportRequest,
+    background_tasks: BackgroundTasks
+):
+
+    try:
+
+        job = payload.model_dump(mode="json")
+
+        job_id = job["jobId"]
+
+        result_url = validate_result_url(
+            job["resultUrl"]
+        )
+
+        if payload.toDate < payload.fromDate:
+            raise HTTPException(
+                status_code=400,
+                detail="End date cannot be earlier than start date."
+            )
+
+        with report_lock:
+
+            completed_jobs = get_completed_jobs()
+
+            # Ignore jobs already completed.
+            if job_id in completed_jobs:
+                return {
+                    "received": True
+                }
+
+            # Ignore jobs currently being processed.
+            if job_id in active_jobs:
+                return {
+                    "received": True
+                }
+
+            active_jobs.add(job_id)
+
+        job["resultUrl"] = result_url
+
+        background_tasks.add_task(
+            process_report,
+            job
+        )
+
+        logger.info("Accepted report job: %s", job_id)
+
+        return {
+            "received": True
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Report request failed.")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process report request."
+        )
+
+
+# ---------------------------------------------------------
+# 7. HEALTH CHECK
+# ---------------------------------------------------------
+
+@app.get("/health")
+def health_check():
+
+    return {
+        "status": "running",
+        "service": "Compare My Parking Bot API"
+    }
